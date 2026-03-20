@@ -1,1 +1,118 @@
-asd
+// ID chat : 8566839684
+// API token Bot: 8507712831:AAFyaX2ES9f-jXVD6RG4mgyyLrI7Q4DAL-8
+// PLC IP : 172.16.10.2
+// Architecture :
+// Step 1: Khai báo thư viện làm việc
+// Step 2: Khai báo kiểu dữ liệu UDT
+// Step 3 : Khai báo biến hằng cho Token, ChatID
+// Step 4 : Khai báo danh sách Alarm
+// Step 5 : Tạo vòng lặp để kiểm tra Alarm
+// Step 6 : Gửi tin nhắn
+// Step 7 : Bắt lỗi
+// Step 6: Delay
+using S7.Net; // Library S7
+using System; // Library C#
+using System.Collections.Generic;
+using System.Text;
+using System.Threading.Tasks;
+using Telegram.Bot; // Library Telegram bot
+namespace PLC_telegram_bot // Namespace Project
+{
+    public class PLC_UDT /// Khai báo dữ liệu UDT
+    {
+        public string NameAlarm { get; set; }
+        public string Address_in_DB { get; set;  }
+        public bool State_Alarm { get; set; }
+        public DateTime TimeAlarm { get; set; }
+    }
+    class Program // Khai báo biến Token
+    {
+        private static string Token = "8507712831:AAFyaX2ES9f-jXVD6RG4mgyyLrI7Q4DAL-8";
+        private static long ChatID = 8566839684;
+        private static string IP_PLC = "172.10.10.2";
+        static async Task Main(string[] args) // Tạo Bot Telegram, khai báo PLC
+        {
+            var BotTaurus = new TelegramBotClient(Token);
+            Plc myPlc = new Plc(CpuType.S71500, IP_PLC, 0, 1);
+            List<PLC_UDT> alarmlist = new List<PLC_UDT> // Danh sách alarm
+            {
+                new PLC_UDT
+                {
+                    NameAlarm = "Level of Tank High",
+                    Address_in_DB = "DB7.DBX0.1",
+                },
+                 new PLC_UDT
+                {
+                    NameAlarm = "Level of Tank Low",
+                    Address_in_DB = "DB7.DBX0.2",
+                },
+                  new PLC_UDT
+                {
+                    NameAlarm = "Fault VFD",
+                    Address_in_DB = "DB7.DBX0.3",
+                }
+
+            };
+
+            Console.WriteLine("Systems PLC On Power");
+            while (true) // Vòng lặp kiểm tra lỗi
+            {
+                // Try Catch for Catch Error when Send message to Telegram fail
+                try
+                {
+                    if (!myPlc.IsConnected) // Nếu không kết nối
+                    {
+                        myPlc.Open();
+                        if (myPlc.IsConnected) // Đã kết nối
+                            Console.WriteLine(" PLC Connected!");
+                    }
+                    if (myPlc.IsConnected)
+                        foreach (var alarm in alarmlist)
+                        {
+                            var result = myPlc.Read(alarm.Address_in_DB);
+                            if (result != null)
+                            {
+                                bool currentAlarm = (bool)result;
+                                if (currentAlarm && !alarm.State_Alarm)
+                                {
+                                    alarm.TimeAlarm = DateTime.Now;
+                                    // Await for wait the message send to telegram complete, and then Catch Error 
+
+                                    string msg = $"🚨 ALERT: {alarm.NameAlarm}\n" +
+                                                     $"⏰ Time: {alarm.TimeAlarm:HH:mm:ss dd/MM/yyyy}\n" +
+                                                     $"📍 Location: {IP_PLC}";
+                                    Console.WriteLine("Sent Complete");
+                                    await BotTaurus.SendMessage(
+                                    chatId: ChatID,
+                                    text: msg);
+                                }
+                                else if (!currentAlarm && alarm.State_Alarm)
+
+                                {
+                                    string msg = $"✅ RECOVERED: {alarm.NameAlarm}\n" +
+                                                 $"⏰ Time: {DateTime.Now:HH:mm:ss}";
+
+                                    await BotTaurus.SendMessage(
+                                        chatId: ChatID,
+                                        text: msg
+                                        );
+
+                                }
+                                alarm.State_Alarm = currentAlarm;
+                            }
+                        }
+                    }
+                
+
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Error Message" + ex.Message);
+                }
+                await Task.Delay(2000);
+            }
+
+
+        }
+    }
+}
+
